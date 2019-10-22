@@ -259,22 +259,17 @@ gradientY = pure . compute . mapStencil Edge sobelY
 -- {-# INLINE sobelY #-}
 
 sobelX :: Num e => Stencil Ix2 e e
-sobelX = makeConvolutionStencil (Sz 3) (1 :. 1) $ \ f -> f (-1 :. -1) (-1) .
-                                                         f ( 0 :. -1) (-2) .
-                                                         f ( 1 :. -1) (-1) .
-                                                         f (-1 :.  1)   1  .
-                                                         f ( 0 :.  1)   2  .
-                                                         f ( 1 :.  1)   1
+sobelX = makeConvolutionStencil (Sz 3) (1 :. 1) $ \ f ->
+  f (-1 :. -1) (-1) . f (-1 :.  1) 1  .
+  f ( 0 :. -1) (-2) . f ( 0 :.  1) 2  .
+  f ( 1 :. -1) (-1) . f ( 1 :.  1) 1
 {-# INLINE sobelX #-}
 
 
 sobelY :: Num e => Stencil Ix2 e e
-sobelY = makeConvolutionStencil (Sz 3) (1 :. 1) $ \ f -> f (-1 :. -1) (-1) .
-                                                         f (-1 :.  0) (-2) .
-                                                         f (-1 :.  1) (-1) .
-                                                         f ( 1 :. -1)   1  .
-                                                         f ( 1 :.  0)   2  .
-                                                         f ( 1 :.  1)   1
+sobelY = makeConvolutionStencil (Sz 3) (1 :. 1) $ \ f ->
+  f (-1 :. -1) (-1) . f (-1 :.  0) (-2) . f (-1 :.  1) (-1) .
+  f ( 1 :. -1)   1  . f ( 1 :.  0)   2  . f ( 1 :.  1)   1
 {-# INLINE sobelY #-}
 
 
