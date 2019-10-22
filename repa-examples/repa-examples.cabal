@@ -46,13 +46,12 @@ Executable repa-canny
         -fllvm -optlo-O3
 
 Executable massiv-canny
-  Build-depends:
-                    base                 >= 4.8 && < 4.13
-                , deepseq
-                , massiv
-                , massiv-io
-                , repa-io
-                , vector
+  Build-depends: base                 >= 4.8 && < 4.13
+               , deepseq
+               , massiv
+               , massiv-io
+               , repa-io
+               , vector
 
 
   Main-is: examples/Canny/src-massiv/Main.hs
@@ -60,11 +59,11 @@ Executable massiv-canny
   ghc-options:
         -rtsopts
         -threaded
-        -eventlog
+        -- -eventlog
         -O2
-        -fmax-simplifier-iterations=20
-        -fsimplifier-phases=3
-        -fno-liberate-case
+        -- -fmax-simplifier-iterations=20
+        -- -fsimplifier-phases=3
+        -- -fno-liberate-case
  if flag(llvm)
   ghc-options:
         -fllvm -optlo-O3

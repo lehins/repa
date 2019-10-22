@@ -74,34 +74,33 @@ run loops threshLow threshHigh fileIn fileOut
 process :: Int -> Float -> Float -> Image S RGB Word8 -> IO (Image S Y Word8)
 process loops threshLow threshHigh arrInput
  = do   arrGrey         <- timeStage loops "toGreyScale"
-                           (pure $ toGreyScale arrInput)
+                           (toGreyScale arrInput)
 
         arrBluredX      <- timeStage loops "blurX"
-                           (pure $ blurSepX arrGrey)
+                           (blurSepX arrGrey)
 
         arrBlured       <- timeStage loops "blurY"
-                           (pure $ blurSepY arrBluredX)
+                           (blurSepY arrBluredX)
 
 
         arrDX           <- timeStage loops "diffX"
-                           (pure $ gradientX arrBlured)
+                           (gradientX arrBlured)
 
         arrDY           <- timeStage loops "diffY"
-                           (pure $ gradientY arrBlured)
+                           (gradientY arrBlured)
 
         arrMagOrient    <- timeStage loops "magOrient"
-                           (pure $ gradientMagOrient threshLow arrDX arrDY)
+                           (gradientMagOrient threshLow arrDX arrDY)
 
         arrSuppress     <- timeStage loops "suppress"
-                           (pure $ suppress threshLow threshHigh arrMagOrient)
+                           (suppress threshLow threshHigh arrMagOrient)
 
         arrStrong       <- timeStage loops "select"
-                           (pure $ selectStrong arrSuppress)
+                           (selectStrong arrSuppress)
 
         arrEdges        <- timeStage loops "wildfire"
                         $  wildfire arrSuppress arrStrong
 
-        --return $ compute $ A.map (PixelY . snd) arrMagOrient
         return arrEdges
 
 
@@ -139,8 +138,8 @@ timeStage loops name fn
 
 -------------------------------------------------------------------------------
 -- | RGB to greyscale conversion.
-toGreyScale :: Image S RGB Word8 -> Image S Y Float
-toGreyScale = compute . A.map ((*255) . toPixelYF)
+toGreyScale :: Image S RGB Word8 -> IO (Image S Y Float)
+toGreyScale = pure . compute . A.map ((*255) . toPixelYF)
 {-# NOINLINE toGreyScale #-}
 
 toPixelYF :: Pixel RGB Word8 -> Pixel Y Float
@@ -152,9 +151,9 @@ toPixelYF (PixelRGB r g b)
 {-# INLINE toPixelYF #-}
 
 -- | Separable Gaussian blur in the X direction.
-blurSepX :: Image S Y Float -> Image S Y Float
+blurSepX :: Image S Y Float -> IO (Image S Y Float)
 blurSepX =
-  compute .
+  pure . compute .
   mapStencil
     Edge
     (makeStencil (Sz2 1 5) (0 :. 2) $ \get ->
@@ -168,9 +167,9 @@ blurSepX =
 
 
 -- | Separable Gaussian blur in the Y direction.
-blurSepY :: Image S Y Float -> Image S Y Float
+blurSepY :: Image S Y Float -> IO (Image S Y Float)
 blurSepY =
-  compute . fmap (/256) .
+  pure . compute . fmap (/256) .
   mapStencil
     Edge
     (makeStencil (Sz2 5 1) (2 :. 0) $ \get ->
@@ -216,14 +215,37 @@ blurSepY =
 -- {-# INLINE gradientY #-}
 
 -- | Compute gradient in the X direction.
-gradientX :: Image S Y Float -> Image S Y Float
-gradientX = compute . mapStencil Edge sobelX
+gradientX :: Image S Y Float -> IO (Image S Y Float)
+gradientX = pure . compute . mapStencil Edge sobelX
 {-# INLINE gradientX #-}
 
 
 -- | Compute gradient in the Y direction.
-gradientY :: Image S Y Float -> Image S Y Float
-gradientY = compute . mapStencil Edge sobelY
+gradientY :: Image S Y Float -> IO (Image S Y Float)
+gradientY = pure . compute . mapStencil Edge sobelY
+
+-- sobelX :: (Default e, Num e) => Stencil Ix2 e e
+-- sobelX =
+--   makeStencil (Sz 3) (1 :. 1) $
+--     \ f -> f (-1 :.  1)     +
+--            f ( 0 :.  1) * 2 +
+--            f ( 1 :.  1)     -
+--            f (-1 :. -1)     -
+--            f ( 0 :. -1) * 2 -
+--            f ( 1 :. -1)
+-- {-# INLINE sobelX #-}
+
+
+-- sobelY :: (Default e, Num e) => Stencil Ix2 e e
+-- sobelY =
+--   makeStencil (Sz 3) (1 :. 1) $
+--     \ f -> f ( 1 :. -1)     +
+--            f ( 1 :.  0) * 2 +
+--            f ( 1 :.  1)     -
+--            f (-1 :. -1)     -
+--            f (-1 :.  0) * 2 -
+--            f (-1 :.  1)
+-- {-# INLINE sobelY #-}
 
 sobelX :: Num e => Stencil Ix2 e e
 sobelX =
@@ -251,10 +273,11 @@ sobelY =
 
 -- | Classify the magnitude and orientation of the vector gradient.
 gradientMagOrient
-        :: Float -> Image S Y Float -> Image S Y Float -> Array U Ix2 (Float, Word8)
+        :: Float -> Image S Y Float -> Image S Y Float -> IO (Array U Ix2 (Float, Word8))
 gradientMagOrient !threshLow dX dY
-        = compute
-        $ A.zipWith magOrient dX dY
+        = pure
+          $ compute
+          $ A.zipWith magOrient dX dY
 
  where  magOrient :: Pixel Y Float -> Pixel Y Float -> (Float, Word8)
         magOrient (PixelY x) (PixelY y)
@@ -308,10 +331,11 @@ gradientMagOrient !threshLow dX dY
 
 -- | Suppress pixels that are not local maxima, and use the magnitude to classify maxima
 --   into strong and weak (potential) edges.
-suppress :: Float -> Float -> Array U Ix2 (Float, Word8) -> Image S Y Word8
+suppress :: Float -> Float -> Array U Ix2 (Float, Word8) -> IO (Image S Y Word8)
 suppress !threshLow !threshHigh dMagOrient
- = compute
- $ mapStencil (Fill (0, 0)) (makeUnsafeStencil 3 1 comparePts) dMagOrient
+  = pure
+  $ compute
+  $ mapStencil (Fill (0, 0)) (makeUnsafeStencil 3 1 comparePts) dMagOrient
  where  {-# INLINE comparePts #-}
         comparePts _ get
          | o == orientUndef     = edge None
@@ -355,9 +379,9 @@ suppress !threshLow !threshHigh dMagOrient
 
 
 -- | Select indices of strong edges.
-selectStrong :: Image S Y Word8 -> Array U Ix1 Ix2
+selectStrong :: Image S Y Word8 -> IO (Array U Ix1 Ix2)
 selectStrong =
-  compute .
+  pure . compute .
   imapMaybeS
     (\ !ix !e ->
        if e == edge Strong
@@ -368,20 +392,18 @@ selectStrong =
 
 -- | Trace out strong edges in the final image.
 --   Also trace out weak edges that are connected to strong edges.
-wildfire
-        :: Image S Y Word8       -- ^ Image with strong and weak edges set.
-        -> Array U Ix1 Ix2  -- ^ Array containing indices of strong edges.
-        -> IO (Image S Y Word8)
-
-wildfire img vStrong
-  -- Stack of image indices we still need to consider.
- = do
+wildfire ::
+     Image S Y Word8 -- ^ Image with strong and weak edges set.
+  -> Array U Ix1 Ix2 -- ^ Array containing indices of strong edges.
+  -> IO (Image S Y Word8)
+wildfire img vStrong = do
   vStrong' <- A.thaw vStrong
+  -- Stack of image indices we still need to consider.
   vStack <- A.unsafeLinearGrow vStrong' (Sz lenImg)
   -- Burn in new edges.
   vImg <- A.new (size img)
   burn vImg vStack (unSz (size vStrong))
-  freeze (getComp img) vImg
+  unsafeFreeze (getComp img) vImg
   where
     lenImg = totalElem (A.size img)
     burn ::
@@ -394,9 +416,9 @@ wildfire img vStrong
       | otherwise = do
         let !top' = top - 1
         ix@(y :. x) <- readM vStack top'
-        let {-# INLINE push #-}
-            push t = pushWeak vImg vStack t
-        writeM vImg ix (edge Strong) >> push (y - 1 :. x - 1) top' >>=
+        let push t = pushWeak vImg vStack t
+            {-# INLINE push #-}
+        unsafeWrite vImg ix (edge Strong) >> push (y - 1 :. x - 1) top' >>=
           push (y - 1 :. x) >>=
           push (y - 1 :. x + 1) >>=
           push (y :. x - 1) >>=
@@ -405,17 +427,17 @@ wildfire img vStrong
           push (y + 1 :. x) >>=
           push (y + 1 :. x + 1) >>=
           burn vImg vStack
-        -- If this ix is weak in the source then set it to strong in the
-        -- result and push the ix onto the stack.
-    {-# INLINE pushWeak #-}
+    -- If this ix is weak in the source then set it to strong in the
+    -- result and push the ix onto the stack.
     pushWeak vImg vStack ix top = do
       case indexM img ix of
         Nothing -> pure top
         Just xSrc -> do
-          xDst <- readM vImg ix
+          xDst <- unsafeRead vImg ix
           if xDst == edge None && xSrc == edge Weak
             then do
-              writeM vStack top ix
+              unsafeWrite vStack top ix
               return (top + 1)
             else return top
+    {-# INLINE pushWeak #-}
 {-# NOINLINE wildfire #-}
