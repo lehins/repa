@@ -136,7 +136,7 @@ timeStage loops name fn = do
 -------------------------------------------------------------------------------
 -- | RGB to greyscale conversion.
 toGreyScale :: Image S RGB Word8 -> IO (Image S Y Float)
-toGreyScale = pure . compute . A.map ((*255) . toPixelYF)
+toGreyScale = pure . compute . A.map toPixelYF
 {-# NOINLINE toGreyScale #-}
 
 toPixelYF :: Pixel RGB Word8 -> Pixel Y Float
@@ -144,22 +144,19 @@ toPixelYF (PixelRGB r g b) =
   let !r' = fromIntegral r / 255
       !g' = fromIntegral g / 255
       !b' = fromIntegral b / 255
-   in PixelY (r' * 0.3 + g' * 0.59 + b' * 0.11)
+   in PixelY (0.299 * r' + 0.587 * g' + 0.114 * b')
 {-# INLINE toPixelYF #-}
 
 -- | Separable Gaussian blur in the X direction.
 blurSepX :: Image S Y Float -> IO (Image S Y Float)
-blurSepX =
-  pure . compute .
-  mapStencil
-    Edge
-    (makeStencil (Sz2 1 5) (0 :. 2) $ \get ->
+blurSepX = pure . compute . mapStencil Edge
+  (makeStencil (Sz2 1 5) (0 :. 2) $ \get ->
        get (0 :. -2)     +
        get (0 :. -1) * 4 +
        get (0 :.  0) * 6 +
        get (0 :.  1) * 4 +
        get (0 :.  2)
-    )
+  )
 {-# NOINLINE blurSepX #-}
 
 -- gaussianX :: Num e => Stencil Ix2 e e
@@ -185,17 +182,14 @@ blurSepX =
 
 -- | Separable Gaussian blur in the Y direction.
 blurSepY :: Image S Y Float -> IO (Image S Y Float)
-blurSepY =
-  pure . compute . fmap (/256) .
-  mapStencil
-    Edge
-    (makeStencil (Sz2 5 1) (2 :. 0) $ \get ->
+blurSepY = pure . compute . mapStencil Edge
+  (makeStencil (Sz2 5 1) (2 :. 0) $ \get ->
        get (-2 :. 0)     +
        get (-1 :. 0) * 4 +
        get ( 0 :. 0) * 6 +
        get ( 1 :. 0) * 4 +
        get ( 2 :. 0)
-    )
+  )
 {-# NOINLINE blurSepY #-}
 
 -- -- | Compute gradient in the X direction.
@@ -265,7 +259,7 @@ gradientY = pure . compute . mapStencil Edge sobelY
 -- {-# INLINE sobelY #-}
 
 sobelX :: Num e => Stencil Ix2 e e
-sobelX = makeCorrelationStencil (Sz 3) (1 :. 1) $ \ f -> f (-1 :. -1) (-1) .
+sobelX = makeConvolutionStencil (Sz 3) (1 :. 1) $ \ f -> f (-1 :. -1) (-1) .
                                                          f ( 0 :. -1) (-2) .
                                                          f ( 1 :. -1) (-1) .
                                                          f (-1 :.  1)   1  .
@@ -275,7 +269,7 @@ sobelX = makeCorrelationStencil (Sz 3) (1 :. 1) $ \ f -> f (-1 :. -1) (-1) .
 
 
 sobelY :: Num e => Stencil Ix2 e e
-sobelY = makeCorrelationStencil (Sz 3) (1 :. 1) $ \ f -> f (-1 :. -1) (-1) .
+sobelY = makeConvolutionStencil (Sz 3) (1 :. 1) $ \ f -> f (-1 :. -1) (-1) .
                                                          f (-1 :.  0) (-2) .
                                                          f (-1 :.  1) (-1) .
                                                          f ( 1 :. -1)   1  .
