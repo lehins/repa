@@ -51,7 +51,6 @@ Executable massiv-canny
                , massiv
                , massiv-io
                , repa-io
-               , vector
 
 
   Main-is: examples/Canny/src-massiv/Main.hs
@@ -59,11 +58,7 @@ Executable massiv-canny
   ghc-options:
         -rtsopts
         -threaded
-        -- -eventlog
         -O2
-        -- -fmax-simplifier-iterations=20
-        -- -fsimplifier-phases=3
-        -- -fno-liberate-case
  if flag(llvm)
   ghc-options:
         -fllvm -optlo-O3
