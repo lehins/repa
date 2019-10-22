@@ -1,4 +1,5 @@
-{-# LANGUAGE PackageImports, BangPatterns, QuasiQuotes, PatternGuards, 
+{-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE PackageImports, BangPatterns, QuasiQuotes, PatternGuards,
              MagicHash, ScopedTypeVariables, TypeFamilies #-}
 {-# OPTIONS -Wall -fno-warn-missing-signatures -fno-warn-incomplete-patterns #-}
 
@@ -46,22 +47,23 @@ edge Strong     = 255   :: Word8
 
 
 -- Main routine ---------------------------------------------------------------
-main 
+main
  = do   args    <- getArgs
         case args of
-         [fileIn, fileOut]              
+         [fileIn, fileOut]
            -> run 0 50 100 fileIn fileOut
 
          [loops, threshLow, threshHigh, fileIn, fileOut]
            -> run (read loops) (read threshLow) (read threshHigh) fileIn fileOut
 
-         _ -> putStrLn 
+         _ -> putStrLn
            $ concat [ "repa-canny [<loops::Int> <threshLow::Int> <threshHigh::Int>]"
                     , " <fileIn.bmp> <fileOut.bmp>" ]
 
 
+run :: Int -> Float -> Float -> FilePath -> FilePath -> IO ()
 run loops threshLow threshHigh fileIn fileOut
- = do   arrInput <- liftM (either (error . show) id) 
+ = do   arrInput <- liftM (either (error . show) id)
                  $  readImageFromBMP fileIn
 
         (arrResult, tTotal)
@@ -69,12 +71,18 @@ run loops threshLow threshHigh fileIn fileOut
 
         when (loops >= 1)
          $ putStrLn $ "\nTOTAL\n"
-        
+
         putStr $ prettyTime tTotal
-        
+
         writeImageToBMP fileOut (U.zip3 arrResult arrResult arrResult)
 
 
+process ::
+     Int
+  -> Float
+  -> Float
+  -> Image (Word8, Word8, Word8)
+  -> IO (Array U DIM2 Word8)
 process loops threshLow threshHigh arrInput
  = do   arrGrey         <- timeStage loops "toGreyScale"
                         $  toGreyScale    arrInput
@@ -86,50 +94,50 @@ process loops threshLow threshHigh arrInput
                         $  blurSepY arrBluredX
 
 
-        arrDX           <- timeStage loops "diffX"        
+        arrDX           <- timeStage loops "diffX"
                         $  gradientX arrBlured
 
         arrDY           <- timeStage loops "diffY"
                         $  gradientY arrBlured
-                
-        arrMagOrient    <- timeStage loops "magOrient"   
+
+        arrMagOrient    <- timeStage loops "magOrient"
                         $  gradientMagOrient threshLow arrDX arrDY
 
-        arrSuppress     <- timeStage loops "suppress"     
+        arrSuppress     <- timeStage loops "suppress"
                         $  suppress threshLow threshHigh arrMagOrient
 
         arrStrong       <- timeStage loops "select"
-                        $  selectStrong arrSuppress   
+                        $  selectStrong arrSuppress
 
         arrEdges        <- timeStage loops "wildfire"
-                        $  wildfire arrSuppress arrStrong     
+                        $  wildfire arrSuppress arrStrong
 
-        return arrEdges
+        pure arrEdges
 
 
 -- | Wrapper to time each stage of the algorithm.
 timeStage
         :: Int
-        -> String 
+        -> String
         -> IO (Array U sh a)
         -> IO (Array U sh a)
 
 timeStage loops name fn
- = do   
+ = do
         let burn !n
              = do !arr  <- fn
                   if n <= 1 then return arr
                             else burn (n - 1)
 
         traceEventIO $ "**** Stage " P.++ name P.++ " begin."
-                
+
         (arrResult, t)
          <- time $ do  !arrResult' <- burn loops
                        return arrResult'
 
         traceEventIO $ "**** Stage " P.++ name P.++ " end."
 
-        when (loops >= 1) 
+        when (loops >= 1)
          $ putStr       $  name P.++ "\n"
                         P.++ unlines [ "  " P.++ l | l <- lines $ prettyTime t ]
 
@@ -143,7 +151,7 @@ toGreyScale :: Image (Word8, Word8, Word8) -> IO (Image Float)
 toGreyScale arr
         = computeP
         $ R.map (* 255)
-        $ R.map floatLuminanceOfRGB8 arr 
+        $ R.map floatLuminanceOfRGB8 arr
 {-# NOINLINE toGreyScale #-}
 
 
@@ -152,7 +160,7 @@ blurSepX :: Image Float -> IO (Image Float)
 blurSepX arr
         = computeP
         $ forStencil2  BoundClamp arr
-          [stencil2|    1 4 6 4 1 |]    
+          [stencil2|    1 4 6 4 1 |]
 {-# NOINLINE blurSepX #-}
 
 
@@ -188,12 +196,12 @@ gradientY img
         $ forStencil2 BoundClamp img
           [stencil2|     1  2  1
                          0  0  0
-                        -1 -2 -1 |] 
+                        -1 -2 -1 |]
 {-# NOINLINE gradientY #-}
 
 
 -- | Classify the magnitude and orientation of the vector gradient.
-gradientMagOrient 
+gradientMagOrient
         :: Float -> Image Float -> Image Float -> IO (Image (Float, Word8))
 
 gradientMagOrient !threshLow dX dY
@@ -204,12 +212,12 @@ gradientMagOrient !threshLow dX dY
         magOrient !x !y
                 = (magnitude x y, orientation x y)
         {-# INLINE magOrient #-}
-        
+
         magnitude :: Float -> Float -> Float
         magnitude !x !y
                 = sqrt (x * x + y * y)
         {-# INLINE magnitude #-}
-        
+
         {-# INLINE orientation #-}
         orientation :: Float -> Float -> Word8
         orientation !x !y
@@ -217,19 +225,19 @@ gradientMagOrient !threshLow dX dY
          -- Don't bother computing orientation if vector is below threshold.
          | x >= negate threshLow, x < threshLow
          , y >= negate threshLow, y < threshLow
-         = orientUndef 
+         = orientUndef
 
          | otherwise
          = let  -- Determine the angle of the vector and rotate it around a bit
                 -- to make the segments easier to classify.
-                !d      = atan2 y x 
+                !d      = atan2 y x
                 !dRot   = (d - (pi/8)) * (4/pi)
-        
+
                 -- Normalise angle to beween 0..8
                 !dNorm  = if dRot < 0 then dRot + 8 else dRot
 
                 -- Doing explicit tests seems to be faster than using the FP floor function.
-           in fromIntegral 
+           in fromIntegral
                $ I# (if dNorm >= 4
                      then if dNorm >= 6
                           then if dNorm >= 7
@@ -256,22 +264,22 @@ gradientMagOrient !threshLow dX dY
 suppress :: Float -> Float -> Image (Float, Word8) -> IO (Image Word8)
 suppress !threshLow !threshHigh !dMagOrient
  = computeP
- $ makeBordered2 
-        (extent dMagOrient) 1 
+ $ makeBordered2
+        (extent dMagOrient) 1
         (makeCursored (extent dMagOrient) id addDim comparePts)
         (fromFunction (extent dMagOrient) (const 0))
 
  where  {-# INLINE comparePts #-}
         comparePts d@(sh :. i :. j)
          | o == orientUndef     = edge None
-         | o == orientHoriz     = isMax (getMag (sh :. i   :. j-1)) (getMag (sh :. i   :. j+1)) 
-         | o == orientVert      = isMax (getMag (sh :. i-1 :. j))   (getMag (sh :. i+1 :. j)) 
-         | o == orientNegDiag   = isMax (getMag (sh :. i-1 :. j-1)) (getMag (sh :. i+1 :. j+1)) 
-         | o == orientPosDiag   = isMax (getMag (sh :. i-1 :. j+1)) (getMag (sh :. i+1 :. j-1)) 
+         | o == orientHoriz     = isMax (getMag (sh :. i   :. j-1)) (getMag (sh :. i   :. j+1))
+         | o == orientVert      = isMax (getMag (sh :. i-1 :. j))   (getMag (sh :. i+1 :. j))
+         | o == orientNegDiag   = isMax (getMag (sh :. i-1 :. j-1)) (getMag (sh :. i+1 :. j+1))
+         | o == orientPosDiag   = isMax (getMag (sh :. i-1 :. j+1)) (getMag (sh :. i+1 :. j-1))
          | otherwise            = edge None
-      
+
          where
-          !o            = getOrient d  
+          !o            = getOrient d
           !m            = getMag    (Z :. i :. j)
 
           getMag        = fst . (R.unsafeIndex dMagOrient)
@@ -297,34 +305,34 @@ selectStrong img
 
         match ix        = vec `V.unsafeIndex` ix == edge Strong
         {-# INLINE match #-}
-        
+
         process' ix     = ix
         {-# INLINE process' #-}
-        
+
    in   selectP match process' (size $ extent img)
 {-# NOINLINE selectStrong #-}
 
 
--- | Trace out strong edges in the final image. 
+-- | Trace out strong edges in the final image.
 --   Also trace out weak edges that are connected to strong edges.
-wildfire 
+wildfire
         :: Image Word8       -- ^ Image with strong and weak edges set.
         -> Array U DIM1 Int  -- ^ Array containing flat indices of strong edges.
         -> IO (Image Word8)
 
 wildfire img arrStrong
- = do   (sh, vec)       <- wildfireIO 
+ = do   (sh, vec)       <- wildfireIO
         return  $ sh `seq` vec `seq` fromUnboxed sh vec
 
  where  lenImg          = R.size $ R.extent img
         lenStrong       = R.size $ R.extent arrStrong
         vStrong         = toUnboxed arrStrong
-        
+
         wildfireIO
          = do   -- Stack of image indices we still need to consider.
                 vStrong' <- V.thaw vStrong
                 vStack   <- VM.grow vStrong' (lenImg - lenStrong)
-        
+
                 -- Burn in new edges.
                 vImg    <- VM.unsafeNew lenImg
                 VM.set vImg 0
@@ -332,12 +340,12 @@ wildfire img arrStrong
                 vImg'   <- V.unsafeFreeze vImg
                 return  (extent img, vImg')
 
-        
+
         burn :: VM.IOVector Word8 -> VM.IOVector Int -> Int -> IO ()
         burn !vImg !vStack !top
          | top == 0
          = return ()
-        
+
          | otherwise
          = do   let !top'               =  top - 1
                 n                       <- VM.unsafeRead vStack top'
@@ -345,7 +353,7 @@ wildfire img arrStrong
 
                 let {-# INLINE push #-}
                     push t              = pushWeak vImg vStack t
-                                
+
                 VM.write vImg n (edge Strong)
                  >>  push (Z :. y - 1 :. x - 1) top'
                  >>= push (Z :. y - 1 :. x    )
@@ -368,13 +376,11 @@ wildfire img arrStrong
                 xDst            <- VM.unsafeRead vImg n
                 let xSrc        = img `R.unsafeIndex` ix
 
-                if   xDst == edge None 
+                if   xDst == edge None
                   && xSrc == edge Weak
                  then do
                         VM.unsafeWrite vStack top (toIndex (extent img) ix)
                         return (top + 1)
-                        
+
                  else   return top
 {-# NOINLINE wildfire #-}
-
-
