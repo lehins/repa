@@ -116,8 +116,7 @@ timeStage loops name fn
  = do
         let burn !n
              = do !arr  <- fn
-                  arr `deepseq`
-                    if n <= 1 then return arr
+                  if n <= 1 then return arr
                     else burn (n - 1)
 
         traceEventIO $ "**** Stage " P.++ name P.++ " begin."
@@ -273,8 +272,8 @@ sobelY =
 
 -- | Classify the magnitude and orientation of the vector gradient.
 gradientMagOrient
-        :: Float -> Image S Y Float -> Image S Y Float -> IO (Array U Ix2 (Float, Word8))
-gradientMagOrient !threshLow dX dY
+        :: Float -> Image S Y Float -> Image S Y Float -> IO (Array S Ix2 Float, Array S Ix2 Word8)
+gradientMagOrient !threshLow !dX !dY
         = pure
           $ compute
           $ A.zipWith magOrient dX dY
