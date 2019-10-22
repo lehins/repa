@@ -273,23 +273,18 @@ sobelY =
 -- | Classify the magnitude and orientation of the vector gradient.
 gradientMagOrient
         :: Float -> Image S Y Float -> Image S Y Float -> IO (Array S Ix2 Float, Array S Ix2 Word8)
-gradientMagOrient !threshLow !dX !dY
-        = pure
-          $ compute
-          $ A.zipWith magOrient dX dY
+gradientMagOrient !threshLow !dX !dY = pure (mag, orient)
 
- where  magOrient :: Pixel Y Float -> Pixel Y Float -> (Float, Word8)
-        magOrient (PixelY x) (PixelY y)
-                = (magnitude' x y, orientation x y)
-        {-# INLINE magOrient #-}
+ where  !mag = compute $ A.zipWith magnitude' dX dY
+        !orient = compute $ A.zipWith orientation dX dY
 
-        magnitude' :: Float -> Float -> Float
-        magnitude' !x !y = sqrt (x * x + y * y)
+        magnitude' :: Pixel Y Float -> Pixel Y Float -> Float
+        magnitude' (PixelY x) (PixelY y) = sqrt (x * x + y * y)
         {-# INLINE magnitude' #-}
 
         {-# INLINE orientation #-}
-        orientation :: Float -> Float -> Word8
-        orientation !x !y
+        orientation :: Pixel Y Float -> Pixel Y Float -> Word8
+        orientation (PixelY x) (PixelY y)
 
          -- Don't bother computing orientation if vector is below threshold.
          | x >= negate threshLow, x < threshLow
@@ -330,13 +325,13 @@ gradientMagOrient !threshLow !dX !dY
 
 -- | Suppress pixels that are not local maxima, and use the magnitude to classify maxima
 --   into strong and weak (potential) edges.
-suppress :: Float -> Float -> Array U Ix2 (Float, Word8) -> IO (Image S Y Word8)
-suppress !threshLow !threshHigh dMagOrient
+suppress :: Float -> Float -> (Array S Ix2 Float, Array S Ix2 Word8) -> IO (Image S Y Word8)
+suppress !threshLow !threshHigh (!dMag, !dOrient)
   = pure
   $ compute
-  $ mapStencil (Fill (0, 0)) (makeUnsafeStencil 3 1 comparePts) dMagOrient
+  $ mapStencil (Fill 0) (makeUnsafeStencil 3 1 comparePts) dMag
  where  {-# INLINE comparePts #-}
-        comparePts _ get
+        comparePts !ix getMag
          | o == orientUndef     = edge None
          | o == orientHoriz     = isMax (getMag ( 0 :. -1)) (getMag ( 0 :.  1))
          | o == orientVert      = isMax (getMag (-1 :.  0)) (getMag ( 1 :.  0))
@@ -347,25 +342,8 @@ suppress !threshLow !threshHigh dMagOrient
          | otherwise            = edge None
 
          where
-          (!m, !o) = get (0 :. 0)
-          getMag = fst . get
-          {-# INLINE getMag #-}
-
- -- where  {-# INLINE comparePts #-}
- --        comparePts d@(i :. j) _
- --         | o == orientUndef     = edge None
- --         | o == orientHoriz     = isMax (getMag (i   :. j-1)) (getMag (i   :. j+1))
- --         | o == orientVert      = isMax (getMag (i-1 :. j))   (getMag (i+1 :. j))
- --         | o == orientNegDiag   = isMax (getMag (i-1 :. j-1)) (getMag (i+1 :. j+1))
- --         | o == orientPosDiag   = isMax (getMag (i-1 :. j+1)) (getMag (i+1 :. j-1))
- --         | otherwise            = edge None
-
- --         where
- --          !o            = getOrient d
- --          !m            = getMag    (i :. j)
-
- --          getMag        = fst . (A.unsafeIndex dMagOrient)
- --          getOrient     = snd . (A.unsafeIndex dMagOrient)
+          !o = unsafeIndex dOrient ix
+          !m = getMag (0 :. 0)
 
           {-# INLINE isMax #-}
           isMax !intensity1 !intensity2
